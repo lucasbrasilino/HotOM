@@ -1,6 +1,7 @@
 import struct
 
 from pox.lib.packet.packet_base import packet_base
+from pox.lib.addresses import *
 
 class hotom(packet_base):
     "HotOM header"
@@ -13,9 +14,9 @@ class hotom(packet_base):
         self.prev = prev
         self.next = None
 
-        self.net_id = net_id
-        self.dst = dst
-        self.src = src
+        self.net_id = EthAddr('00:00:00:' + net_id)
+        self.dstsrc = EthAddr(dst + ':' + src)
+        #self.src = src
 
         if raw is not None:
             self.parse(raw)
@@ -23,21 +24,26 @@ class hotom(packet_base):
         self._init(kw)
 
     def __str__(self):
-        s = "[HotOM net_id={0} dst={1} src={2}]".format(self.net_id,
-                                                        self.dst,self.src)
+        s = "[HotOM net_id={0} dst={1} src={2}]".format(
+            self.net_id.toStr()[9:],
+            self.dstsrc.toStr()[0:8],
+            self.dstsrc.toStr()[9:])
         return s
 
     def parse(self, raw):
         assert isinstance(raw,bytes)
         self.next = None
         self.raw = raw
-        #self.net_id = raw[:6]
-        #self.dst = raw[6:12]
-        #self.src = raw[12:18]
-        (self.net_id, self.dst, self.src) = struct.unpack('!3s3s3s',
-                                                          raw[:hotom.LEN])
+        alen = len(raw)
+        if alen < hotom.LEN:
+            self.msg('warning HotOM packet data too short to parse header: data len %u' % (alen,))
+            return
+
+        self.net_id = EthAddr('\x00\x00\x00'+raw[:3])
+        self.dstsrc = EthAddr(raw[3:9])
         self.next = raw[hotom.LEN:]
         self.parsed = True
 
     def hdr(self,payload):
-        return struct.pack('!3s3s3s',self.net_id,self.dst,self.src)
+        return struct.pack('!3s6s', self.net_id.toRaw()[3:],
+                           self.dstsrc.toRaw())
