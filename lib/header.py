@@ -16,7 +16,6 @@ class hotom(packet_base):
 
         self.net_id = EthAddr('00:00:00:' + net_id)
         self.dstsrc = EthAddr(dst + ':' + src)
-        #self.src = src
 
         if raw is not None:
             self.parse(raw)
