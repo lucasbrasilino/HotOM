@@ -24,6 +24,29 @@ class FirstTest(object):
         self.log.debug("dpid: %s" % event.dpid)
            #self.log.debug("Switch features: %s" % event.ofp)
 
+    def encapsulate(self,packet,port):
+        pkt_hotom = hotom(net_id="AA:BB:CC", dst="00:00:02",src="00:00:01")
+        pkt_vlan = pkt.vlan(id=2,eth_type=0x080A)
+        pkt_eth = packet.find('ethernet')
+        pkt_ip = packet.find('ipv4')
+        pkt_eth.type = pkt.ethernet.VLAN_TYPE
+        pkt_eth.payload = pkt_vlan
+        pkt_vlan.payload = pkt_hotom
+        pkt_hotom.payload = pkt_ip
+        msg = of.ofp_packet_out(data=pkt_eth)
+        msg.actions.append(of.ofp_action_output(port = port))
+        return msg
+
+    def desencapsulate(self,packet,port):
+        pkt_eth = packet.find('ethernet')
+        pkt_vlan = packet.find('vlan')
+        pkt_hotom = packet.find('hotom')
+        pkt_eth.payload = pkt_hotom.payload
+        pkt_eth.type = pkt.ethernet.IP_TYPE
+        msg = of.ofp_packet_out(data=pkt_eth)
+        msg.actions.append(of.ofp_action_output(port = port))
+        return msg
+
     def _handle_ConnectionUp (self, event):
         self.connections.add(event.connection)
         self.switches[event.dpid] = HotOMSwitch(event)
@@ -40,27 +63,7 @@ class FirstTest(object):
         if event.port == 2:
             msg = self.desencapsulate(packet,1)
             event.connection.send(msg)
-            
-        #pkt_ip = packet.find('ipv4')
-        #if pkt_ip is not None:
-        #    return
-        #if event.port == 1:
-        #    msg = self.encapsulate(pa
-        #if event.dpid == 1:
-        #    if event.port == 1:
-        #        pkt_hotom = hotom(net_id="AA:BB:CC", dst="00:00:02",
-        #                          src="00:00:01")
-        #        pkt_vlan = pkt.vlan(id=2,eth_type=0x080A)
-        #        pkt_eth.type = pkt.ethernet.VLAN_TYPE
-        #        pkt_eth.payload = pkt_vlan
-        #        pkt_vlan.payload = pkt_hotom
-        #        pkt_hotom.payload = pkt_ip
-        #        msg = of.ofp_packet_out(data=pkt_eth)
-        #        msg.actions.append(of.ofp_action_output(port = 2))
-        #        event.connection.send(msg)
-        #elif event.dpid == 2:
-        #    print "Pacote: %s" % pkt_ip
-                
+                            
 def launch():
     core.registerNew(FirstTest)
     
