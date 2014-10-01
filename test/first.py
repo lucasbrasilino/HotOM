@@ -15,6 +15,7 @@ class FirstTest(object):
 
     def __init__(self):
         self.log = core.getLogger()
+        core.openflow.miss_send_len = 1400
         core.openflow.addListeners(self)
         self.log.info("FirstTest initialization")
         self.switches = dict()
@@ -22,26 +23,26 @@ class FirstTest(object):
 
     def debug (self,event):
         self.log.debug("dpid: %s" % event.dpid)
-           #self.log.debug("Switch features: %s" % event.ofp)
 
-    def encapsulate(self,packet,port):
+    def push_header(self,packet,port):
         pkt_hotom = hotom(net_id="AA:BB:CC", dst="00:00:02",src="00:00:01")
-        pkt_vlan = pkt.vlan(id=2,eth_type=0x080A)
+        pkt_vlan = pkt.vlan(id=2,eth_type=pkt.ethernet.IP_TYPE)
         pkt_eth = packet.find('ethernet')
         pkt_ip = packet.find('ipv4')
-        pkt_eth.type = pkt.ethernet.VLAN_TYPE
+        if pkt_ip is None:
+            self.log.debug("Packet not IPV4: %s" % packet)
+            return
+        pkt_vlan.payload = pkt_ip
         pkt_eth.payload = pkt_vlan
-        pkt_vlan.payload = pkt_hotom
-        pkt_hotom.payload = pkt_ip
+        pkt_eth.type = pkt.ethernet.VLAN_TYPE
         msg = of.ofp_packet_out(data=pkt_eth)
         msg.actions.append(of.ofp_action_output(port = port))
         return msg
 
-    def desencapsulate(self,packet,port):
+    def pop_header(self,packet,port):
         pkt_eth = packet.find('ethernet')
         pkt_vlan = packet.find('vlan')
-        pkt_hotom = packet.find('hotom')
-        pkt_eth.payload = pkt_hotom.payload
+        pkt_eth.payload = pkt_vlan.payload
         pkt_eth.type = pkt.ethernet.IP_TYPE
         msg = of.ofp_packet_out(data=pkt_eth)
         msg.actions.append(of.ofp_action_output(port = port))
@@ -58,11 +59,13 @@ class FirstTest(object):
             self.log.debug("ARP packet")
             return
         if event.port == 1:
-            msg = self.encapsulate(packet,2)
-            event.connection.send(msg)
+            msg = self.push_header(packet,2)
+            if msg is not None:
+                event.connection.send(msg)
         if event.port == 2:
-            msg = self.desencapsulate(packet,1)
-            event.connection.send(msg)
+            msg = self.pop_header(packet,1)
+            if msg is not None:
+                event.connection.send(msg)
                             
 def launch():
     core.registerNew(FirstTest)
