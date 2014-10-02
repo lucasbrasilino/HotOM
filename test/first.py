@@ -1,33 +1,23 @@
 from pox.core import core
 import pox.openflow.libopenflow_01 as of
 import pox.lib.packet as pkt
-from HotOM.lib.header import *
-
-class HotOMSwitch(object):
-    def __init__(self,event):
-        self.connection = event.connection
-        for p in event.ofp.ports:
-            if p.port_no == 65534:
-                self.name = p.name
-                self.hw_addr = p.hw_addr
+from pox.lib.addresses import EthAddr
         
 class FirstTest(object):
-
     def __init__(self):
         self.log = core.getLogger()
         core.openflow.miss_send_len = 1400
         core.openflow.addListeners(self)
         self.log.info("FirstTest initialization")
-        self.switches = dict()
         self.connections = set()
 
-    def debug (self,event):
-        self.log.debug("dpid: %s" % event.dpid)
-
     def push_header(self,packet,port):
-        pkt_hotom = hotom(net_id="AA:BB:CC", dst="00:00:02",src="00:00:01")
-        pkt_vlan = pkt.vlan(id=2,eth_type=pkt.ethernet.HOTOM_TYPE)
         pkt_eth = packet.find('ethernet')
+        pkt_hotom = pkt.hotom()
+        pkt_hotom.net_id = EthAddr("00:00:00:AA:BB:CC")
+        pkt_hotom.dst = EthAddr("00:00:00:"+pkt_eth.dst.toStr()[9:])
+        pkt_hotom.dst = EthAddr("00:00:00:"+pkt_eth.dst.toStr()[9:])
+        pkt_vlan = pkt.vlan(id=2,eth_type=pkt.ethernet.HOTOM_TYPE)
         pkt_ip = packet.find('ipv4')
         if pkt_ip is None:
             self.log.debug("Packet not IPV4: %s" % packet)
@@ -52,10 +42,9 @@ class FirstTest(object):
 
     def _handle_ConnectionUp (self, event):
         self.connections.add(event.connection)
-        self.switches[event.dpid] = HotOMSwitch(event)
 
     def _handle_PacketIn (self, event):
-        self.debug(event)
+        self.log.debug("dpid: %d" % event.dpid)
         packet = event.parsed
         if packet.find('arp') is not None:
             self.log.debug("ARP packet")
