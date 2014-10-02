@@ -26,13 +26,14 @@ class FirstTest(object):
 
     def push_header(self,packet,port):
         pkt_hotom = hotom(net_id="AA:BB:CC", dst="00:00:02",src="00:00:01")
-        pkt_vlan = pkt.vlan(id=2,eth_type=pkt.ethernet.IP_TYPE)
+        pkt_vlan = pkt.vlan(id=2,eth_type=pkt.ethernet.HOTOM_TYPE)
         pkt_eth = packet.find('ethernet')
         pkt_ip = packet.find('ipv4')
         if pkt_ip is None:
             self.log.debug("Packet not IPV4: %s" % packet)
             return
-        pkt_vlan.payload = pkt_ip
+        pkt_hotom.payload = pkt_ip
+        pkt_vlan.payload = pkt_hotom
         pkt_eth.payload = pkt_vlan
         pkt_eth.type = pkt.ethernet.VLAN_TYPE
         msg = of.ofp_packet_out(data=pkt_eth)
@@ -42,7 +43,8 @@ class FirstTest(object):
     def pop_header(self,packet,port):
         pkt_eth = packet.find('ethernet')
         pkt_vlan = packet.find('vlan')
-        pkt_eth.payload = pkt_vlan.payload
+        pkt_hotom = packet.find('hotom')
+        pkt_eth.payload = pkt_hotom.payload
         pkt_eth.type = pkt.ethernet.IP_TYPE
         msg = of.ofp_packet_out(data=pkt_eth)
         msg.actions.append(of.ofp_action_output(port = port))
