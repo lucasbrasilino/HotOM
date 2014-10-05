@@ -13,23 +13,24 @@ class HotOMSwitch(object):
         
 class SecondTest(object):
 
-    def __init__(self, net_id="AA:BB:CC"):
+    def __init__(self,net_id=0xaabbcc):
         self.log = core.getLogger()
         core.openflow.miss_send_len = 1400
         core.openflow.addListeners(self)
         self.log.info("SecondTest initialization")
         self.switches = dict()
         self.connections = set()
-        self.net_id = EthAddr("00:00:00:"+net_id)
+        self.net_id = net_id
 
     def push_header(self,packet,sw_src,sw_dst,port):
-        pkt_hotom = pkt.hotom(net_id=self.net_id)
+        pkt_hotom = pkt.hotom()
         pkt_vlan = pkt.vlan(id=2,eth_type=pkt.ethernet.HOTOM_TYPE)
         pkt_eth = packet.find('ethernet')
         pkt_ip = packet.find('ipv4')
         if pkt_ip is None:
             self.log.debug("Packet not IPV4: %s" % packet)
             return
+        pkt_hotom.net_id=
         pkt_hotom.src=pkt_eth.src
         pkt_hotom.dst=pkt_eth.dst
         pkt_hotom.payload = pkt_ip
@@ -46,8 +47,8 @@ class SecondTest(object):
         pkt_eth = packet.find('ethernet')
         pkt_vlan = packet.find('vlan')
         pkt_hotom = packet.find('hotom')
-        pkt_eth.src = EthAddr('\x00\x00\x00'+pkt_hotom.src.toRaw()[3:])
-        pkt_eth.dst = EthAddr('\x00\x00\x00'+pkt_hotom.dst.toRaw()[3:])
+        pkt_eth.src = pkt_hotom.src
+        pkt_eth.dst = pkt_hotom.dst
         pkt_eth.payload = pkt_hotom.payload
         pkt_eth.type = pkt.ethernet.IP_TYPE
         msg = of.ofp_packet_out(data=pkt_eth)
