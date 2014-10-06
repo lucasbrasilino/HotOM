@@ -14,9 +14,9 @@ class FirstTest(object):
     def push_header(self,packet,port):
         pkt_eth = packet.find('ethernet')
         pkt_hotom = pkt.hotom()
-        pkt_hotom.net_id = EthAddr("00:00:00:AA:BB:CC")
-        pkt_hotom.dst = EthAddr("00:00:00:"+pkt_eth.dst.toStr()[9:])
-        pkt_hotom.dst = EthAddr("00:00:00:"+pkt_eth.dst.toStr()[9:])
+        pkt_hotom.net_id = 0x0
+        pkt_hotom.dst = pkt_eth.dst
+        pkt_hotom.dst = pkt_eth.src
         pkt_vlan = pkt.vlan(id=2,eth_type=pkt.ethernet.HOTOM_TYPE)
         pkt_ip = packet.find('ipv4')
         if pkt_ip is None:

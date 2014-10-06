@@ -13,7 +13,7 @@ class HotOMSwitch(object):
         
 class SecondTest(object):
 
-    def __init__(self,net_id=0xaabbcc):
+    def __init__(self,net_id=0x0):
         self.log = core.getLogger()
         core.openflow.miss_send_len = 1400
         core.openflow.addListeners(self)
@@ -30,7 +30,7 @@ class SecondTest(object):
         if pkt_ip is None:
             self.log.debug("Packet not IPV4: %s" % packet)
             return
-        pkt_hotom.net_id=
+        pkt_hotom.net_id=self.net_id
         pkt_hotom.src=pkt_eth.src
         pkt_hotom.dst=pkt_eth.dst
         pkt_hotom.payload = pkt_ip
