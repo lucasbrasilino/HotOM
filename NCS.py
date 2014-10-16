@@ -4,6 +4,7 @@ import pox.lib.packet as pkt
 from pox.lib.addresses import *
 from pox.lib.recoco import Timer
 from HotOM.lib.HotOMTenant import *
+from HotOM.lib.tools import *
 
 class NCS(object):
     def __init__(self):
@@ -13,7 +14,7 @@ class NCS(object):
         core.openflow.addListeners(self)
         self.log.info("NCS initialization")
         self.timer = dict()
-        self.timer[0] = Timer(10, self.gratuitousARP, args=[None],recurring=True)
+        self.timer[0] = Timer(30, self.gratuitousARP, args=[None],recurring=True)
         self.timer[1] = Timer(5, self.dump,recurring=True)
         self.net[0xaabbcc] = HotOMNet(0xaabbcc)
 
@@ -66,16 +67,25 @@ class NCS(object):
         self.net[0xaabbcc].removevSwitch(event.dpid)
 
     def inbound(self,dpid,packet):
-        vs = self.net[0xaabbcc].vswitch[dpid]
-        vstag = vs.vstag
         pkt_eth = packet.find('ethernet')
         pkt_vlan = packet.find('vlan')
         pkt_hotom = packet.find('hotom')
         if pkt_hotom is None:
             return
-        pkt_eth.src = EthAddr(self.net[0xaabbcc].toRaw() + pkt_hotom.src.toRaw()[3:])
-        pkt_eth.dst = EthAddr(self.net[0xaabbcc].toRaw() + pkt_hotom.dst.toRaw()[3:])
-        port = vs.getPort(pkt_hotom.dst)
+        try:
+            vs = self.net[pkt_hotom.net_id].vswitch[dpid]
+        except KeyError:
+            self.log.debug("Packet arrived from an alien network: %d" % pkt_hotom.net_id)
+            return
+        vstag = vs.vstag
+        pkt_eth.src = removeNetIDEthAddr(pkt_hotom.src)
+        pkt_eth.dst = removeNetIDEthAddr(pkt_hotom.dst)
+        pkt_eth.payload = pkt_hotom.payload
+        pkt_eth.type = pkt.ethernet.IP_TYPE
+        port = vs.getPort(removeNetIDEthAddr(pkt_hotom.dst))
+        self.sendPktInternal(dpid,pkt_eth,port)
+
+    def sendPktInternal(self,dpid,pkt_eth,port):
         msg = of.ofp_packet_out(data=pkt_eth)
         msg.actions.append(of.ofp_action_output(port = port))
         try:
@@ -83,15 +93,50 @@ class NCS(object):
             conn.send(msg)
         except:
             raise RuntimeError("can't send msg to vSwitch %s" % v)
-    
+
+    def sendPktExternal(self,dpid,pkt_eth):
+        self.log.debug("Entering sendPktExternal")
+        self.log.debug("    => Eth   Pkt %s" % (pkt_eth))
+        vswitches = self.net[0xaabbcc].vswitch
+        vstag = vswitches[dpid].vstag
+        port = vswitches[dpid].uplink
+        dst_vswitch = None
+        dst_addr = removeNetIDEthAddr(pkt_eth.dst)
+        for i in vswitches.keys():
+            vswitch = vswitches[i]
+            for k in vswitch._vm.keys():
+                vm = vswitch._vm[k]
+                if dst_addr == vm.hw_addr:
+                    dst_vswitch = vswitch
+        if dst_vswitch is None:
+            self.log.debug("External packet to a unknown destination: %s" % pkt_eth.dst)
+            return
+        pkt_vlan = pkt.vlan(id=dst_vswitch.vstag,eth_type=pkt.ethernet.HOTOM_TYPE)
+        pkt_hotom = pkt.hotom()
+        pkt_hotom.net_id = 0xaabbcc
+        pkt_hotom.dst = pkt_eth.dst
+        pkt_hotom.src = pkt_eth.src
+        pkt_eth.src = vswitches[dpid].hw_addr
+        pkt_eth.dst = dst_vswitch.hw_addr
+        pkt_hotom.payload = pkt_eth.payload
+        pkt_vlan.payload = pkt_hotom
+        pkt_eth.type = pkt.ethernet.VLAN_TYPE
+        pkt_eth.payload = pkt_vlan
+        self.log.debug("Sending port %d %s" % (port,pkt_eth))
+        self.log.debug("    => HotOM Pkt %s" % (pkt_hotom))
+        self.sendPktInternal(dpid,pkt_eth,port) 
+
     def outbound(self,dpid,packet):
         vs = self.net[0xaabbcc].vswitch[dpid]
         vstag = vs.vstag
         pkt_eth = packet.find('ethernet')
-        
-        
+        try:
+            port = vs.getPort(pkt_eth.dst)
+            self.sendPktInteral(dpid,pkt_eth,port)
+        except KeyError:
+            self.sendPktExternal(dpid,pkt_eth   )
 
-    def is_inboundmatch(self,dpid,packet):
+    def isInboundMatch(self,dpid,packet):
         vs = self.net[0xaabbcc].vswitch[dpid]
         vstag = vs.vstag
         pkt_eth = packet.find('ethernet')
@@ -107,17 +152,19 @@ class NCS(object):
         packet = event.parsed
         port = event.port
         dpid = event.dpid
-        vs = self.net[0xaabbcc].vswitch[dpid]
         if not (bool(packet.find('ipv4')) or bool(packet.find('vlan'))):
             self.log.debug("PacketIn: Neither IPv4 or VLAN => %s" % packet)
             return
-        if port == vs.uplink:
-            if self.is_inboundmatch(dpid,packet):
-                self.inbound(dpid,packet)
-        else:
-            self.outbound(dpid,packet)
+        try:
+            vs = self.net[0xaabbcc].vswitch[dpid]
+            if port == vs.uplink:
+                if self.isInboundMatch(dpid,packet):
+                    self.inbound(dpid,packet)
+            else:
+                self.outbound(dpid,packet)
+        except KeyError:
+            self.log.debug("Switch not registered: %d" % dpid)
 
 def launch():
     core.registerNew(NCS)
-
 
