@@ -147,7 +147,8 @@ class HotOMNet(object):
             raise TypeError
 
     def toRaw(self):
-        return struct.pack('!H',self.net_id>>8) + struct.pack('!B',0xff&self.net_id)
+        return struct.pack('!H',self.net_id>>8) + \
+            struct.pack('!B',0xff&self.net_id)
 
     def __str__(self):
         buf = "[HotOMNet: net_id = %s" % (hex(self.net_id)) + "\n"

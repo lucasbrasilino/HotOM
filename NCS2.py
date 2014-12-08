@@ -30,7 +30,7 @@ class NCS(object):
         
     def handle_ARP(self,event,eth,arp):
         '''Handle ARP requests'''
-        if arp.protosrc = IP_ANY:
+        if arp.protosrc == ipv4.IP_ANY:
             # VM does an ARP before assign IP
             self.handle_registerVM2Net(event,eth)
 

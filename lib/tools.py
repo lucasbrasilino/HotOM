@@ -13,3 +13,9 @@ def removeNetIDEthAddr(addr):
     if not isinstance(addr,EthAddr):
         raise TypeError
     return EthAddr('\x00\x00\x00'+addr.toRaw()[3:])
+
+def getNetIDEthAddr(addr):
+    '''Get the net_id in MAC'''
+    if not isinstance(addr,EthAddr):
+        raise TypeError
+    return addr.toRaw()[:3]
