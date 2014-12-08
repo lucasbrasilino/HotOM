@@ -14,7 +14,7 @@ class NCS(object):
         core.openflow.miss_send_len = 1400
         core.openflow.addListeners(self)
         self.log.info("NCS initialization")
-        #Timer(30, self.gratuitousARP, args=[None],recurring=True)
+        Timer(30, self.gratuitousARP, args=[None],recurring=True)
         Timer(10, self.dump,recurring=True)
 
     def dump(self):
@@ -58,21 +58,19 @@ class NCS(object):
             conn = core.openflow.getConnection(dpid)
             conn.send(msg)
         except:
-            raise RuntimeError("can't send msg to vSwitch %s" % v)
-
+            raise RuntimeError("can't send msg to vSwitch %d" % dpid)
         
     def gratuitousARP(self,dpid):
-        v = self.avs[dpid]
-        eth = v.createGratuitousARP()
-        msg = of.ofp_packet_out(data=eth)
-        msg.actions.append(of.ofp_action_output(port = v.uplink))
-        try:
-            conn = core.openflow.getConnection(dpid)
-            self.log.debug("Sending gratuitousARP for %s" % v)
-            conn.send(msg)
-        except:
-            raise RuntimeError("can't send msg to vSwitch %s" % v)
-
+        '''Send gratuitous ARP for one or all vswitches'''
+        if dpid is None:
+            dpid_list = core.openflow.connections.keys()
+        else:
+            dpid_list = list()
+            dpid_list.append(dpid)
+        for k in dpid_list:
+            vs = self.avs[k]
+            eth = vs.createGratuitousARP()
+            self.send(k,eth,vs.uplink)
 
     def _handle_ConnectionUp(self,event):
         if event.dpid == 1:
