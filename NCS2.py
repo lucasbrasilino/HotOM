@@ -14,25 +14,65 @@ class NCS(object):
         core.openflow.miss_send_len = 1400
         core.openflow.addListeners(self)
         self.log.info("NCS initialization")
-        Timer(30, self.gratuitousARP, args=[None],recurring=True)
-        Timer(5, self.dump,recurring=True)
+        #Timer(30, self.gratuitousARP, args=[None],recurring=True)
+        Timer(10, self.dump,recurring=True)
 
-    def handle_registerVM2Net(event,eth):
+    def dump(self):
+        for k in self.net.keys():
+            self.log.debug(self.net[k])
+
+    def handle_registerVM2Net(self,event,eth):
         '''Register VM to a Net. If it does not exist, create one'''
-        net_id = getNetIDEthAddr(eth.src)
-        vm = HotOMVM(nw_addr=eth.src,ip_addr=eth.payload.protodst)
+        net_id = fromBytesToInt(getNetIDEthAddr(eth.src))
+        vm = HotOMVM(hw_addr=eth.src,ip_addr=eth.payload.protodst)
         self.avs[event.dpid].addVM(vm,event.port)
         if not self.net.has_key(net_id):
-            self.log.debug("Creating HotOM network: %s" % net_id)
+            self.log.debug("Creating HotOM network: %s" % hex(net_id))
             self.net[net_id] = HotOMNet(net_id)
-        self.log.debug("Adding VM %s to HotOM network %s" % (eth.src,net_id))
+        self.log.debug("Adding VM %s to HotOM network %s" % (eth.src,hex(net_id)))
         self.net[net_id].addvSwitch(event.dpid,self.avs[event.dpid])
         
     def handle_ARP(self,event,eth,arp):
         '''Handle ARP requests'''
-        if arp.protosrc == ipv4.IP_ANY:
-            # VM does an ARP before assign IP
+        if arp.protosrc == IP_ANY:
+            # No IP address assigned VM does an ARP
             self.handle_registerVM2Net(event,eth)
+            return
+        # Get AVS handling ARP
+        vs = self.avs[event.dpid]
+        ## Check if ARP comes from VM
+        if event.port == vs.uplink:
+            return
+        # Query hw addr from IP in database
+        net_id = fromBytesToInt(getNetIDEthAddr(eth.src))
+        hw_dst = self.net[net_id].getVMfromIP(eth.payload.protodst)
+        if hw_dst is None:
+            return
+        resp = self.net[net_id].createARPResponse(eth,hw_dst)
+        self.send(event.dpid,resp,event.port)
+
+    def send(self,dpid,packet,port):
+        msg = of.ofp_packet_out(data=packet)
+        msg.actions.append(of.ofp_action_output(port = port))
+        try:
+            conn = core.openflow.getConnection(dpid)
+            conn.send(msg)
+        except:
+            raise RuntimeError("can't send msg to vSwitch %s" % v)
+
+        
+    def gratuitousARP(self,dpid):
+        v = self.avs[dpid]
+        eth = v.createGratuitousARP()
+        msg = of.ofp_packet_out(data=eth)
+        msg.actions.append(of.ofp_action_output(port = v.uplink))
+        try:
+            conn = core.openflow.getConnection(dpid)
+            self.log.debug("Sending gratuitousARP for %s" % v)
+            conn.send(msg)
+        except:
+            raise RuntimeError("can't send msg to vSwitch %s" % v)
+
 
     def _handle_ConnectionUp(self,event):
         if event.dpid == 1:
@@ -42,15 +82,16 @@ class NCS(object):
         vs = HotOMvSwitch(vstag)
         self.avs[event.dpid] = vs
         vs.uplink = 1
-        self.gratuitousARP(vs)
+        self.gratuitousARP(event.dpid)
 
     def _handle_PacketIn(self,event):
         packet = event.parsed
         port = event.port
         dpid = event.dpid
         eth = packet.find('ethernet')
+        vlan = packet.find('vlan')
         arp = packet.find('arp')
-        if arp is not None:
+        if bool(arp) and not bool(vlan):
             self.handle_ARP(event,eth,arp)
         if not (bool(packet.find('ipv4')) or bool(packet.find('vlan'))):
             self.log.debug("PacketIn: Neither IPv4 or VLAN => %s" % packet)

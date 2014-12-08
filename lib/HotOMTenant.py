@@ -1,4 +1,6 @@
+from HotOM.lib.tools import *
 from pox.lib.addresses import *
+import pox.lib.packet as pkt
 import struct
 
 class HotOMVM(object):
@@ -48,7 +50,6 @@ class HotOMVM(object):
     def __str__(self):
         return "[HotOMVM: hw_addr = {0} | ip_addr = {1} ]".format(self.hw_addr,
                                                                   self.ip_addr)
-                                                        
 
 class HotOMvSwitch(object):
 
@@ -106,6 +107,20 @@ class HotOMvSwitch(object):
             buf = buf + "               port %s => %s\n" % (k,self._vm[k]) 
         return buf[:len(buf)-1]+"]"
 
+    def createGratuitousARP(self):
+        eth = pkt.ethernet(dst=pkt.ETHER_BROADCAST,src=self.hw_addr)
+        eth.type = pkt.ethernet.VLAN_TYPE
+        vlan = pkt.vlan(id=self.vstag)
+        vlan.eth_type = pkt.ethernet.ARP_TYPE
+        grat = pkt.arp()
+        grat.opcode = pkt.arp.REQUEST
+        grat.hwsrc = eth.src
+        grat.hwdst = eth.dst
+        grat.payload = b'\x0f' * 8
+        eth.payload=vlan
+        vlan.payload=grat
+        return eth
+
 class HotOMNet(object):
     def __init__(self,net_id):
         self.net_id = net_id
@@ -155,3 +170,28 @@ class HotOMNet(object):
         for k in self.vswitch.keys():
             buf = buf + "      dpid = %s => %s\n" % (k,self.vswitch[k])
         return buf[:len(buf)-1]+"]"
+
+    def getVMfromIP(self,addr):
+        '''Return hw addr from IP. Used to support ARP resolution'''
+        if isinstance(addr,IPAddr):
+            for v in self.vswitch.keys():
+                vs = self.vswitch[v]
+                for i in vs._vm:
+                    if addr == vs._vm[i].ip_addr:
+                        return vs._vm[i].hw_addr
+            return None
+        else:
+            raise TypeError
+
+    def createARPResponse(self,pkt_eth,hw_addr):
+        '''Get ARP query ethernet frame and create ARP response'''
+        hw_src = addNetIDEthAddr(hw_addr,self.net_id)
+        eth = pkt.ethernet(dst=pkt_eth.src,src=hw_src)
+        eth.type = pkt.ethernet.ARP_TYPE
+        arp = pkt.arp(opcode=pkt.arp.REPLY)
+        arp.hwsrc = hw_src
+        arp.hwdst = pkt_eth.src
+        arp.protosrc = pkt_eth.payload.protodst
+        arp.protodst = pkt_eth.payload.protosrc
+        eth.payload = arp
+        return eth
