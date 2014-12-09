@@ -132,7 +132,7 @@ class NCS(object):
         pkt_eth = packet.find('ethernet')
         try:
             port = vs.getPort(pkt_eth.dst)
-            self.sendPktInteral(dpid,pkt_eth,port)
+            self.sendPktInternal(dpid,pkt_eth,port)
         except KeyError:
             self.sendPktExternal(dpid,pkt_eth   )
 

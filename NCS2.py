@@ -84,18 +84,32 @@ class NCS(object):
 
     def _handle_PacketIn(self,event):
         packet = event.parsed
-        port = event.port
-        dpid = event.dpid
         eth = packet.find('ethernet')
         vlan = packet.find('vlan')
         arp = packet.find('arp')
+        # If it's ARP without VLAN, probably is a VM checking for IP
         if bool(arp) and not bool(vlan):
             self.handle_ARP(event,eth,arp)
         if not (bool(packet.find('ipv4')) or bool(packet.find('vlan'))):
             self.log.debug("PacketIn: Neither IPv4 or VLAN => %s" % packet)
             return
+        # If it's from a port other than uplink, must be a VM sending something
+        if event.port == self.avs[event.dpid].uplink:
+            self.log.debug("PacketIn inbound from network: %s" % packet)
+        else:
+            self.outbound(event)
 
-
+    def outbound(self,event):
+        packet = event.parsed
+        eth = packet.find('ethernet')
+        net_id = fromBytesToInt(getNetIDEthAddr(eth.src))
+        vs = self.net[net_id].vswitch[event.dpid]
+        vstag = vs.vstag
+        try:
+            port = vs.getPort(eth.dst)
+            self.send(event.dpid,eth,port)
+        except KeyError:
+            self.log.debug("Outbount to network core: %s" % eth)
 
 def launch():
     core.registerNew(NCS)

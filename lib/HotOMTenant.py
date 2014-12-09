@@ -99,7 +99,8 @@ class HotOMvSwitch(object):
             raise TypeError
     
     def getPort(self,hw_addr):
-        return self._cam[hw_addr]
+        '''Get Port for a given MAC, removing net_id first'''
+        return self._cam[removeNetIDEthAddr(hw_addr)]
 
     def __str__(self):
         buf = "[HotOMvSwitch: hw_addr = %s" % self.hw_addr + "\n"
