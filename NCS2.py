@@ -84,6 +84,14 @@ class NCS(object):
         vs.uplink = 1
         self.gratuitousARP(event.dpid)
 
+    def _handle_ConnectionDown(self,event):
+        for (k,net) in self.net.iteritems():
+            try:
+                net.removevSwitch(event.dpid)
+            except:
+                self.log.debug("Removing unknown switch: %d" % event.dpid)
+        del(self.avs[event.dpid])
+
     def _handle_PacketIn(self,event):
         vs = self.avs[event.dpid]
         packet = event.parsed
