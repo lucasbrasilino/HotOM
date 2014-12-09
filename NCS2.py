@@ -29,7 +29,7 @@ class NCS(object):
         vm = HotOMVM(hw_addr=eth.src,ip_addr=eth.payload.protodst)
         self.avs[event.dpid].addVM(vm,event.port)
         if not self.net.has_key(net_id):
-            self.log.debug("Creating HotOM network: %s" % hex(net_id))
+            self.log.info("Creating HotOM network: %s" % hex(net_id))
             self.net[net_id] = HotOMNet(net_id)
         self.log.debug("Adding VM %s to HotOM network %s" % (eth.src,hex(net_id)))
         self.net[net_id].addvSwitch(event.dpid,self.avs[event.dpid])
@@ -112,6 +112,7 @@ class NCS(object):
             self.installL2Pair(event,port)
         except KeyError:
             self.log.debug("Outbount to network core: %s" % eth)
+            self.outbound2Network(event)
 
     def installL2Pair(self,event,port):
         '''If packet reaches installL2Pair, there's no match'''
@@ -138,6 +139,33 @@ class NCS(object):
         msg.match.in_port = event.port
         msg.actions.append(of.ofp_action_output(port = port))
         event.connection.send(msg)
+
+    def outbound2Network(self,event):
+        remote_vstag = None
+        remote_vs_hw = None
+        vs_hw = self.avs[event.dpid].hw_addr
+        uplink = self.avs[event.dpid].uplink
+        packet = event.parsed
+        eth = packet.find('ethernet')
+        net_id = fromBytesToInt(getNetIDEthAddr(eth.src))
+        hw_dst = removeNetIDEthAddr(eth.dst)
+        (remote_vstag,remote_vs_hw) = self.net[net_id].getRemotevSwitchData(hw_dst)
+        if remote_vstag is None:
+            self.log.info("External packet to a unknown destination: %s" % eth.dst)
+            return
+        vlan = pkt.vlan(id=remote_vstag, eth_type=pkt.ethernet.HOTOM_TYPE)
+        hotom = pkt.hotom()
+        hotom.net_id = net_id
+        hotom.dst = eth.dst
+        hotom.src = eth.src
+        eth.src = vs_hw
+        eth.dst = remote_vs_hw
+        hotom.payload = eth.payload
+        vlan.payload = hotom
+        eth.payload = vlan
+        eth.type = pkt.ethernet.VLAN_TYPE
+        self.send(event.dpid,eth,uplink)
+
 
 def launch():
     core.registerNew(NCS)

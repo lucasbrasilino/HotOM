@@ -55,6 +55,7 @@ class HotOMvSwitch(object):
 
     def __init__(self,vstag):
         self.vstag = vstag
+        self.hw_addr = None
         self._setHwAddr(vstag)
         self._vm = dict()
         self._cam = dict()
@@ -196,3 +197,24 @@ class HotOMNet(object):
         arp.protodst = pkt_eth.payload.protosrc
         eth.payload = arp
         return eth
+
+    def getRemotevSwitch(self,hw_addr):
+        '''Return vSwitch which a given VM is connected to'''
+        if isinstance(hw_addr,EthAddr):
+            for (vs_k,vs) in self.vswitch.iteritems():
+                for (vm_k,vm) in vs._vm.iteritems():
+                    if hw_addr == vm.hw_addr:
+                        return vs
+            return None
+        else:
+            raise TypeError
+
+    def getRemotevSwitchData(self,hw_addr):
+        '''Return vSwitch vstag and hw_addr)'''
+        vs = self.getRemotevSwitch(hw_addr)
+        if vs is None:
+            return (None,None)
+        else:
+            return (vs.vstag,vs.hw_addr)
+        
+                
