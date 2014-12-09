@@ -6,6 +6,8 @@ from pox.lib.recoco import Timer
 from HotOM.lib.HotOMTenant import *
 from HotOM.lib.tools import *
 
+FLOW_TIMEOUT = 300
+
 class NCS(object):
     def __init__(self):
         self.net = dict()
@@ -107,9 +109,35 @@ class NCS(object):
         vstag = vs.vstag
         try:
             port = vs.getPort(eth.dst)
-            self.send(event.dpid,eth,port)
+            self.installL2Pair(event,port)
         except KeyError:
             self.log.debug("Outbount to network core: %s" % eth)
+
+    def installL2Pair(self,event,port):
+        '''If packet reaches installL2Pair, there's no match'''
+        packet = event.parsed
+        eth = packet.find('ethernet')
+        # First, install the 'packet response' entry
+        msg = of.ofp_flow_mod()
+        msg.idle_timeout = FLOW_TIMEOUT
+        msg.hard_timeout = 5*FLOW_TIMEOUT
+        msg.match.dl_type = eth.type
+        msg.match.dl_src = eth.dst
+        msg.match.dl_dst = eth.src
+        msg.match.in_port = port
+        msg.actions.append(of.ofp_action_output(port = event.port))
+        event.connection.send(msg)
+        # Then install forwarding rule and send packet
+        msg = of.ofp_flow_mod()
+        msg.idle_timeout = FLOW_TIMEOUT
+        msg.hard_timeout = 5*FLOW_TIMEOUT
+        msg.data = event.ofp
+        msg.match.dl_type = eth.type
+        msg.match.dl_src = eth.src
+        msg.match.dl_dst = eth.dst
+        msg.match.in_port = event.port
+        msg.actions.append(of.ofp_action_output(port = port))
+        event.connection.send(msg)
 
 def launch():
     core.registerNew(NCS)
