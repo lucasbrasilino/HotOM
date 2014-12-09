@@ -24,14 +24,27 @@ class HotOMTopo(Topo):
 		self.addLink(h3,s1)
 		self.addLink(h4,s2)
 
-def simpletopo():
+		
+def runCmd(net):
+	h1 = net.get('h1')
+	h2 = net.get('h2')
+	h5 = net.get('h5')
+	print h1.cmd('arping -0 -c1 -I h1-eth0 10.0.0.1')
+	print h2.cmd('arping -0 -c1 -I h2-eth0 10.0.0.2')
+	print h5.cmd('arping -0 -c1 -I h5-eth0 10.0.0.5')
+	print h1.cmd('ping -c2 10.0.0.5')
+	print h1.cmd('arp -n')
+	print h1.cmd('ping -c1 10.0.0.2')
+
+def topo():
 	topo = HotOMTopo()
 	net = Mininet(topo, switch=OVSSwitch, controller=None)
 	net.addController( 'c0', controller=RemoteController, ip='192.168.56.1', port=6633 )
 	net.start()
+	runCmd(net)
 	CLI(net)
 	net.stop()
 
 if __name__ == "__main__":
 	setLogLevel('info')
-	simpletopo()	
+	topo()	
