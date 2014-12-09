@@ -216,5 +216,3 @@ class HotOMNet(object):
             return (None,None)
         else:
             return (vs.vstag,vs.hw_addr)
-        
-                

@@ -85,6 +85,7 @@ class NCS(object):
         self.gratuitousARP(event.dpid)
 
     def _handle_PacketIn(self,event):
+        vs = self.avs[event.dpid]
         packet = event.parsed
         eth = packet.find('ethernet')
         vlan = packet.find('vlan')
@@ -96,8 +97,9 @@ class NCS(object):
             self.log.debug("PacketIn: Neither IPv4 or VLAN => %s" % packet)
             return
         # If it's from a port other than uplink, must be a VM sending something
-        if event.port == self.avs[event.dpid].uplink:
-            self.log.debug("PacketIn inbound from network: %s" % packet)
+        if event.port == vs.uplink:
+            if self.isInboundMatch(event):
+                self.inbound(event)
         else:
             self.outbound(event)
 
@@ -166,6 +168,37 @@ class NCS(object):
         eth.type = pkt.ethernet.VLAN_TYPE
         self.send(event.dpid,eth,uplink)
 
+    def isInboundMatch(self,event):
+        # Test if inbound vlan ID matches vstag and dst hw addr matches AVS hw addr
+        vs=self.avs[event.dpid]
+        packet = event.parsed
+        eth = packet.find('ethernet')
+        vlan = packet.find('vlan')
+        if vlan is None:
+            return False
+        if bool(eth.dst == vs.hw_addr) and bool(vlan.id == vs.vstag):
+            return True
+        else:
+            return False
+
+    def inbound(self,event):
+        packet = event.parsed
+        eth = packet.find('ethernet')
+        vlan = packet.find('vlan')
+        hotom = packet.find('hotom')
+        if hotom is None:
+            return
+        try:
+            vs = self.net[hotom.net_id].vswitch[event.dpid]
+        except KeyError:
+            self.log.debug("Packet arrived from an alien network: %d" \
+                           % pkt_hotom.net_id)
+        eth.dst = hotom.dst
+        eth.src = hotom.src
+        eth.type = pkt.ethernet.IP_TYPE
+        eth.payload = hotom.payload
+        port = vs.getPort(removeNetIDEthAddr(hotom.dst))
+        self.send(event.dpid,eth,port)
 
 def launch():
     core.registerNew(NCS)
