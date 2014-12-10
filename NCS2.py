@@ -3,19 +3,23 @@ import pox.openflow.libopenflow_01 as of
 import pox.lib.packet as pkt
 from pox.lib.addresses import *
 from pox.lib.recoco import Timer
+from pox.lib.util import dpid_to_str
 from HotOM.lib.HotOMTenant import *
 from HotOM.lib.tools import *
+import csv
 
 FLOW_TIMEOUT = 300
 
 class NCS(object):
-    def __init__(self):
+    def __init__(self,conf):
         self.net = dict()
         self.avs = dict()
+        self.confvstag = dict() # vstag table from config file
         self.log = core.getLogger()
         core.openflow.miss_send_len = 1400
         core.openflow.addListeners(self)
         self.log.info("NCS initialization")
+        self.parseConf(conf)
         Timer(30, self.gratuitousARP, args=[None],recurring=True)
         Timer(10, self.dump,recurring=True)
 
@@ -75,10 +79,14 @@ class NCS(object):
             self.send(k,eth,vs.uplink)
 
     def _handle_ConnectionUp(self,event):
-        if event.dpid == 1:
-            vstag = 4051
-        else:
-            vstag = 4052
+        
+        try:
+            vstag = self.confvstag[dpid_to_str(event.dpid)]
+        except KeyError:
+            self.log.debug("No vstag associated to dpid %s | Ignored" % \
+                           dpid_to_str(event.dpid))
+            return
+        self.log.debug("Adding vswitch vstag=%d",vstag)
         vs = HotOMvSwitch(vstag)
         self.avs[event.dpid] = vs
         vs.uplink = 1
@@ -93,7 +101,11 @@ class NCS(object):
         del(self.avs[event.dpid])
 
     def _handle_PacketIn(self,event):
-        vs = self.avs[event.dpid]
+        try:
+            vs = self.avs[event.dpid]
+        except KeyError:
+            self.log.info("PacketIn from unknown dpid:%s" % dpid_to_str(event.dpid))
+            return
         packet = event.parsed
         eth = packet.find('ethernet')
         vlan = packet.find('vlan')
@@ -102,7 +114,7 @@ class NCS(object):
         if bool(arp) and not bool(vlan):
             self.handle_ARP(event,eth,arp)
         if not (bool(packet.find('ipv4')) or bool(packet.find('vlan'))):
-            self.log.debug("PacketIn: Neither IPv4 or VLAN => %s" % packet)
+            #self.log.debug("PacketIn: Neither IPv4 or VLAN => %s" % packet)
             return
         # If it's from a port other than uplink, must be a VM sending something
         if event.port == vs.uplink:
@@ -208,5 +220,19 @@ class NCS(object):
         port = vs.getPort(removeNetIDEthAddr(hotom.dst))
         self.send(event.dpid,eth,port)
 
-def launch():
-    core.registerNew(NCS)
+    def parseConf(self,conf):
+        if conf == False:
+            # hardcoded
+            self.confvstag['00-00-00-00-00-01'] = 4051
+            self.confvstag['00-00-00-00-00-02'] = 4052
+            return
+        self.log.info("Parsing configuration file: %s" % conf)
+        with open(conf) as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                self.log.debug("Associating dpid %s to vstag %d" % \
+                               (row['dpid'],int(row['vstag'])))
+                self.confvstag[row['dpid']] = int(row['vstag'])
+
+def launch(conf=False):
+    core.registerNew(NCS,conf)
