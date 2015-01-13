@@ -9,7 +9,7 @@ DBSession = sessionmaker(bind=engine)
 session = DBSession()
 
 vm = HotOMVM(net_id=0xaabbcc, ip_addr="192.168.1.1",hw_addr="aa:bb:cc:00:00:01")
-
+#print vm
 session.add(vm)
 
 vm = HotOMVM()
