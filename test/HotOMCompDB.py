@@ -19,9 +19,9 @@ class HotOMVM(Base,HotOMBaseComp):
 
     __tablename__="vm"
     id = Column(Integer,primary_key=True)
-    _net_id = Column(Integer, nullable=True)
-    _hw_addr = Column(String(17), nullable=False, unique=True)
-    _ip_addr = Column(String(15), nullable=False, unique=True)
+    _net_id = Column(String(8), nullable=True)
+    _hw_addr = Column(String(17), nullable=False)
+    _ip_addr = Column(String(15), nullable=False)
     name = Column(String(12), nullable=True)
     
 
@@ -54,8 +54,7 @@ class HotOMVM(Base,HotOMBaseComp):
     def hw_addr(self,val):
         if isinstance(val,bytes):
             if len(val) == 6:
-                buf = struct.pack('!H',self._hw_addr>>8) + \
-                      struct.pack('!B',0xff&self._hw_addr) + val[3:]
+                buf = '\x00' * 3 + val[3:]
             elif len(val) == 17:
                 buf = '00:00:00:' + val[9:]
             else:
@@ -70,17 +69,17 @@ class HotOMVM(Base,HotOMBaseComp):
 
     @property
     def net_id(self):
-        return self._net_id
+        return int(self._net_id,16)
 
     @net_id.setter
     def net_id(self, val):
         if isinstance(val, int):
-            self._net_id = val
+            self._net_id = hex(val)
         else:
             raise TypeError
 
     def __str__(self):
-        return "[HotOMVM: net_id = {0} | hw_addr = {1} | ip_addr = {2} ]".format(hex(self.net_id), self.hw_addr, self.ip_addr)
+        return "[HotOMVM: net_id = 0x{0:x} | hw_addr = {1} | ip_addr = {2} ]".format(self.net_id, self.hw_addr, self.ip_addr)
 
 engine = create_engine('sqlite:///dc.db')
 Base.metadata.create_all(engine)
