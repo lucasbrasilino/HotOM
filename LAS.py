@@ -9,7 +9,7 @@ from HotOM.lib.tools import *
 from HotOM.lib.db import *
 import sys
 
-FLOW_TIMEOUT = 3000000
+FLOW_TIMEOUT = 600
 
 def createGratuitousARP(vstag,hw_addr):
     eth = pkt.ethernet(dst=pkt.ETHER_BROADCAST,src=hw_addr)
@@ -78,8 +78,8 @@ class LAS(object):
             if bool(arp) and not bool(vlan):
                 self.handle_ARP(event,eth,arp)
                 return
-            # Not ARP? Must be traffic
-            self.outbound(event,eth)
+            # Not ARP? Must be traffic from local VMs
+            self.inboundFromLocalVM(event,eth)
 
     def gratuitousARP(self,dpid):
         '''Send gratuitous ARP for one or all vswitches'''
@@ -106,10 +106,10 @@ class LAS(object):
                        (eth.src.toStr(),arp.protodst.toStr()))
         self.send(arp_reply,event.port)
 
-    def outbound(self,event,eth):
+    def inboundFromLocalVM(self,event,eth):
         ip = event.parsed.find('ipv4')
         if ip is None:
-            self.log.debug("Non IPv4 packet received")
+            self.log.debug("Non IPv4 packet received: %s", eth.payload)
             return
         ports_list = self.conn.features.ports
         [ port ] = [ p for p in ports_list if p.port_no == event.port ]
@@ -123,6 +123,9 @@ class LAS(object):
             self.log.debug("Same vswitch traffic. Installing L2 pair");
             [ dst_port ] = [ p for p in ports_list if p.name == dst_port_name ]
             self.installL2Pair(event,eth,dst_port.port_no)
+        else:
+            # Frame to a remote VM, encapsule it and send out
+            self.outboundToRemoteVM(eth,net_id,dst_vstag)
 
     def installL2Pair(self,event,eth,port):
         '''If packet reaches installL2Pair, there's no match'''
@@ -135,7 +138,7 @@ class LAS(object):
         msg.match.dl_dst = eth.src
         msg.match.in_port = port
         msg.actions.append(of.ofp_action_output(port = event.port))
-        event.connection.send(msg)
+        self.conn.send(msg)
         # Then install forwarding rule and send packet
         msg = of.ofp_flow_mod()
         msg.idle_timeout = of.OFP_FLOW_PERMANENT
@@ -146,7 +149,26 @@ class LAS(object):
         msg.match.dl_dst = eth.dst
         msg.match.in_port = event.port
         msg.actions.append(of.ofp_action_output(port = port))
-        event.connection.send(msg)
+        self.conn.send(msg)
+
+    def outboundToRemoteVM(eth,net_id,dst_vstag):
+        dst_eth = getEthAddrfromVstag(dst_vstag)
+        # Create HotOM header from original frame
+        hotom = pkt.hotom()
+        hotom.net_id = net_id
+        hotom.dst = eth.dst
+        hotom.src = eth.src
+        hotom.type = pkt.hotom.IP_TYPE
+        hotom.payload = eth.payload
+        # Create VLAN header
+        vlan = pkt.vlan(id=dst_vstag, eth_type=pkt.ethernet.HOTOM_TYPE)
+        # Replace ethernet addresses and encapsulate
+        eth.src = self.hw_addr
+        eth.dst = dst_eth
+        eth.type = pkt.ethernet.VLAN_TYPE
+        vlan.payload = hotom
+        eth.payload = vlan
+        self.send(eth,self.uplink)
 
 def launch(vstag):
     if int(vstag) > 4095:
