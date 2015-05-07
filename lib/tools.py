@@ -14,6 +14,9 @@ def removeNetIDEthAddr(addr):
         raise TypeError
     return EthAddr('\x00\x00\x00'+addr.toRaw()[3:])
 
+def fromHotOMtoEthAddr(hotom_addr):
+    return EthAddr("00:00:00:"+hotom_addr)
+
 def getNetIDEthAddr(addr):
     '''Get the net_id in MAC'''
     if not isinstance(addr,EthAddr):
@@ -25,3 +28,7 @@ def fromBytesToInt(b):
     if not isinstance(b,bytes):
         raise TypeError
     return 65536*ord(b[0])+256*ord(b[1]) + ord(b[2])
+
+def getEthAddrFromVstag(vstag):
+    e_bytes = b'\x00\x00\x00\x00' + chr((0xff00&vstag)>>8) + chr(0xff&vstag)
+    return EthAddr(e_bytes)
