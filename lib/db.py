@@ -42,3 +42,13 @@ class dbCache (object):
         self.con.close()
         return (net_id,vstag,hw_addr,port_name)
 
+    def getDstVMFromUplinkPort(self,net_id,hotom_addr_dst):
+        self.con = sql.connect(self.dbcache)
+        self.cur = self.con.cursor()
+        self.cur.execute("select port_name from vm where " + \
+                         "net_id = ? and hotom_addr = ?", 
+                         [net_id,hotom_addr_dst])
+        self.con.commit()
+        port_name = self.cur.fetchone()
+        self.con.close()
+        return str(port_name[0])

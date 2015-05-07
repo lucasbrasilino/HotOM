@@ -44,7 +44,7 @@ class LAS(object):
         self.vstag = int(vstag)
         self.log.debug("Opening dbcache %s" % dbcache)
         self.dbcache = dbCache(dbcache)
-        self.uplink = 65354
+        self.uplink = 1
         core.openflow.miss_send_len = 1400
         core.openflow.addListeners(self)
 #        Timer(10, self.dump,recurring=True)
@@ -72,7 +72,11 @@ class LAS(object):
                 return
             # must be some packet from a VM or Gratuitous ARP
             # I will do it later
-            return
+            if bool(vlan) and (vlan.type == pkt.ethernet.ARP_TYPE):
+                self.log.debug("Receive gratuitous ARP: %s" % vlan)
+                return
+            if bool(vlan) and (vlan.id == self.vstag):
+                self.inboundFromRemoteVM(event,vlan)
         else:
             # Packet from a local VM
             # If it's ARP without VLAN, probably is a local VM querying for IP
@@ -128,6 +132,20 @@ class LAS(object):
             # Frame to a remote VM, encapsule it and send out
             self.outboundToRemoteVM(eth,net_id,dst_vstag)
 
+    def inboundFromRemoteVM(self,event,vlan):
+        self.log.debug("Traffic from remote VM")
+        hotom = event.parsed.find('hotom')
+        hotom_addr_dst = hotom.dst.toStr()[9:]
+        port_name = self.dbcache.getDstVMFromUplinkPort(hotom.net_id,hotom_addr_dst)
+        ports_list = self.conn.features.ports
+        [ port ] = [ p for p in ports_list if p.name == port_name ]
+        eth = pkt.ethernet(type=pkt.ethernet.IP_TYPE)
+        eth.dst = hotom.dst
+        eth.src = hotom.src
+        eth.payload = hotom.payload
+        self.send(eth,port.port_no)
+        return
+
     def installL2Pair(self,event,eth,port):
         '''If packet reaches installL2Pair, there's no match'''
         # First, install the 'packet response' entry
@@ -170,7 +188,7 @@ class LAS(object):
         vlan.payload = hotom
         eth.payload = vlan
         # Uplink hardcoded for now
-        self.send(eth,1)
+        self.send(eth,self.uplink)
 
 def launch(vstag):
     if int(vstag) > 4095:
