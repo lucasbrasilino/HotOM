@@ -40,12 +40,13 @@ def createARPReply(net_id,vstag,hotom_addr,eth):
 class LAS(object):
     def __init__(self,vstag,dbcache):
         self.log = core.getLogger()
+        self.log.info("LAS initialization. vstag=%s" % vstag)
         self.vstag = int(vstag)
+        self.log.debug("Opening dbcache %s" % dbcache)
         self.dbcache = dbCache(dbcache)
         self.uplink = 65354
         core.openflow.miss_send_len = 1400
         core.openflow.addListeners(self)
-        self.log.info("LAS initialization. vstag=%d" % self.vstag)
 #        Timer(10, self.dump,recurring=True)
         # CAM Table (net_id,ip_addr) => cam_entry (vstag,hw_addr)
         self.cam = dict()
@@ -151,8 +152,8 @@ class LAS(object):
         msg.actions.append(of.ofp_action_output(port = port))
         self.conn.send(msg)
 
-    def outboundToRemoteVM(eth,net_id,dst_vstag):
-        dst_eth = getEthAddrfromVstag(dst_vstag)
+    def outboundToRemoteVM(self,eth,net_id,dst_vstag):
+        dst_eth = getEthAddrFromVstag(dst_vstag)
         # Create HotOM header from original frame
         hotom = pkt.hotom()
         hotom.net_id = net_id
@@ -168,10 +169,11 @@ class LAS(object):
         eth.type = pkt.ethernet.VLAN_TYPE
         vlan.payload = hotom
         eth.payload = vlan
-        self.send(eth,self.uplink)
+        # Uplink hardcoded for now
+        self.send(eth,1)
 
 def launch(vstag):
     if int(vstag) > 4095:
         print "Invalid vstag: %s" % vstag
         sys.exit(1)
-    core.registerNew(LAS,vstag,dbcache="lcache.db")
+    core.registerNew(LAS,vstag,dbcache="lcache-"+str(vstag)+".db")
