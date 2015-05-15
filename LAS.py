@@ -11,6 +11,11 @@ import sys
 
 FLOW_TIMEOUT = 600
 
+def getUplink(event,uplink_iface):
+    ports_list = event.connection.features.ports
+    [ port ] = [ p for p in ports_list if p.name == uplink_iface ]
+    return int(port.port_no)
+
 def createGratuitousARP(vstag,hw_addr):
     eth = pkt.ethernet(dst=pkt.ETHER_BROADCAST,src=hw_addr)
     eth.type = pkt.ethernet.VLAN_TYPE
@@ -38,13 +43,14 @@ def createARPReply(net_id,vstag,hotom_addr,eth):
     return eth_reply
 
 class LAS(object):
-    def __init__(self,vstag,dbcache):
+    def __init__(self,vstag,uplink,dbcache):
         self.log = core.getLogger()
         self.log.info("LAS initialization. vstag=%s" % vstag)
         self.vstag = int(vstag)
         self.log.debug("Opening dbcache %s" % dbcache)
         self.dbcache = dbCache(dbcache)
-        self.uplink = 1
+        self.uplink_iface = uplink
+        self.uplink = None
         self.conn = None
         core.openflow.miss_send_len = 1450
         core.openflow.addListeners(self)
@@ -58,6 +64,8 @@ class LAS(object):
         self.log.info("Now controlling vswitch %s", self.hw_addr)
         self.dpid = event.dpid
         self.conn = event.connection
+        self.uplink = getUplink(event,self.uplink_iface)
+        self.log.debug("Setting uplink to %s" % str(self.uplink))
         self.garp = createGratuitousARP(self.vstag,self.hw_addr)
         self.gratuitousARP(self.dpid)
         Timer(15, self.gratuitousARP, args=[None],recurring=True)
@@ -188,11 +196,10 @@ class LAS(object):
         eth.type = pkt.ethernet.VLAN_TYPE
         vlan.payload = hotom
         eth.payload = vlan
-        # Uplink hardcoded for now
         self.send(eth,self.uplink)
 
-def launch(vstag):
+def launch(vstag,uplink):
     if int(vstag) > 4095:
         print "Invalid vstag: %s" % vstag
         sys.exit(1)
-    core.registerNew(LAS,vstag,dbcache="lcache-"+str(vstag)+".db")
+    core.registerNew(LAS,vstag,uplink,dbcache="lcache-"+str(vstag)+".db")
