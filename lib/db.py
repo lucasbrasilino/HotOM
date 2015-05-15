@@ -49,6 +49,6 @@ class dbCache (object):
                          "net_id = ? and hotom_addr = ?", 
                          [net_id,hotom_addr_dst])
         self.con.commit()
-        port_name = self.cur.fetchone()
+        (port_name,) = self.cur.fetchone()
         self.con.close()
-        return str(port_name[0])
+        return port_name

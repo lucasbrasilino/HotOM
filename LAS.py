@@ -45,7 +45,8 @@ class LAS(object):
         self.log.debug("Opening dbcache %s" % dbcache)
         self.dbcache = dbCache(dbcache)
         self.uplink = 1
-        core.openflow.miss_send_len = 1400
+        self.conn = None
+        core.openflow.miss_send_len = 1450
         core.openflow.addListeners(self)
 #        Timer(10, self.dump,recurring=True)
         # CAM Table (net_id,ip_addr) => cam_entry (vstag,hw_addr)
