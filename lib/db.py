@@ -31,7 +31,12 @@ class dbCache (object):
                          "and vs.vstag = ? and vm.port_name = ?",
                          [vstag,port_name])
         self.con.commit()
-        (net_id,) = self.cur.fetchone()
+        try:
+            (net_id,) = self.cur.fetchone()
+        except:
+            print "Error on getDstVMFromIngressPort: vstag=%d, " + \
+                "port_name=%s, ip_addr_dst=%s | Return net_id=%s" % \
+                (vstag,port_name,ip_addr_dst,net_id)
         self.cur.execute("select vs.vstag,vm.hotom_addr,vm.port_name from " + \
                          "vn,vm,vs where " + \
                          "vm.net_id=vn.net_id and vm.vstag=vs.vstag " + \
